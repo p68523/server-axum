@@ -12,10 +12,16 @@ use std::time::Duration;
 
 use crate::config::Config;
 
+use tracing_subscriber::fmt;
+use tracing_subscriber::layer::SubscriberExt;
+use tracing_subscriber::util::SubscriberInitExt;
+
+
 #[tokio::main]
 async fn main()
 {
-    init_tracing();
+    dotenvy::dotenv();
+    let _log_guard = init_logger();
 
     let config = Config::from_env();
     let app = crate::app::build_app(config.clone());
@@ -79,11 +85,30 @@ async fn main()
     }
 }
 
-fn init_tracing()
+
+fn init_logger() -> tracing_appender::non_blocking::WorkerGuard
 {
-    tracing_subscriber::fmt()
-        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+    std::fs::create_dir_all("logs").ok();
+
+    let file_appender = tracing_appender::rolling::daily("logs", "server.log");
+    let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
+
+    let env_filter = tracing_subscriber::EnvFilter::from_default_env();
+
+    tracing_subscriber::registry()
+        .with(env_filter)
+        .with(
+            fmt::layer()
+                .with_writer(non_blocking)
+                .with_ansi(false)
+        )
+        .with(
+            fmt::layer()
+                .with_writer(std::io::stdout)
+        )
         .init();
+
+    guard
 }
 
 async fn shutdown_signal()
